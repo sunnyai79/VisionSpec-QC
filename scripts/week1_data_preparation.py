@@ -311,7 +311,7 @@ def build_data_generators():
 
 
 # ─── Visualisations ───────────────────────────────────────────────────────────
-def visualize_class_samples(n=6, save_path="week1_class_samples.png"):
+def visualize_class_samples(n=6, save_path="results/week1_class_samples.png"):
     """Side-by-side pass vs defect — verify visual distinctiveness."""
     fig, axes = plt.subplots(2, n, figsize=(n*3, 7))
     fig.suptitle("VisionSpec QC v3 — Pass vs Defect (visual gap check)\n"
@@ -332,7 +332,7 @@ def visualize_class_samples(n=6, save_path="week1_class_samples.png"):
     print(f"  Saved: {save_path}")
 
 
-def visualize_augmented_batch(train_gen, save_path="week1_augmented_batch.png"):
+def visualize_augmented_batch(train_gen, save_path="results/week1_augmented_batch.png"):
     images, labels = next(train_gen)
     class_names    = {v: k for k, v in train_gen.class_indices.items()}
     n_cols, n_rows = 8, 4
