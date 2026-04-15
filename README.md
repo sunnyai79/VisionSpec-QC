@@ -39,6 +39,10 @@ VisionSpec/
 ├── README.md                      → Project guide
 ├── requirements.txt               → Dependencies list
 ├── app.py                         → Flask app
+├── week1_data_preparation.py      → Data preprocessing
+├── week2_model_training.py        → Model training
+├── week3_grad_cam.py              → GradCAM generation
+├── week4_live_inference.py        → Live inference
 │
 ├── results/                       → Output visuals
 │   ├── week1_augmented_batch.png      → Augmented images
@@ -47,12 +51,6 @@ VisionSpec/
 │   ├── week2_learning_curves.png      → Training curves
 │   ├── week3_gradcam_detail.png       → GradCAM detail
 │   └── week3_gradcam_grid.png         → GradCAM grid
-│
-├── scripts/                       → Processing scripts
-│   ├── week1_data_preparation.py      → Data preprocessing
-│   ├── week2_model_training.py        → Model training
-│   ├── week3_grad_cam.py              → GradCAM generation
-│   └── week4_live_inference.py        → Live inference
 │
 ├── templates/                     → Web UI
 │   └── index.html                     → Frontend page
