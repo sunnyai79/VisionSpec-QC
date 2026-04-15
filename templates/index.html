@@ -1,0 +1,676 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>VisionSpec QC — PCB Defect Detection</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@300;400;500&family=Syne:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+:root {
+  --bg:        #0a0b0d;
+  --bg1:       #111318;
+  --bg2:       #181b21;
+  --bg3:       #1f232b;
+  --border:    #2a2f3a;
+  --border2:   #353c4a;
+  --text:      #e8eaf0;
+  --muted:     #7a8094;
+  --dim:       #4a5068;
+  --pass:      #00d68f;
+  --pass-dim:  #00d68f22;
+  --defect:    #ff4f5a;
+  --defect-dim:#ff4f5a22;
+  --accent:    #4f8ef7;
+  --accent-dim:#4f8ef718;
+  --amber:     #f5a623;
+  --mono:      'DM Mono', monospace;
+  --sans:      'Syne', sans-serif;
+}
+
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+body {
+  font-family: var(--sans);
+  background: var(--bg);
+  color: var(--text);
+  min-height: 100vh;
+  overflow-x: hidden;
+}
+
+/* ── Scanline texture overlay ── */
+body::before {
+  content: '';
+  position: fixed;
+  inset: 0;
+  background: repeating-linear-gradient(0deg, transparent, transparent 2px, rgba(255,255,255,0.012) 2px, rgba(255,255,255,0.012) 4px);
+  pointer-events: none;
+  z-index: 0;
+}
+
+/* ── Header ── */
+.header {
+  position: sticky; top: 0; z-index: 100;
+  display: flex; align-items: center; gap: 20px;
+  padding: 0 28px;
+  height: 56px;
+  background: rgba(10,11,13,0.92);
+  backdrop-filter: blur(12px);
+  border-bottom: 1px solid var(--border);
+}
+.logo-mark {
+  width: 30px; height: 30px;
+  border: 1.5px solid var(--accent);
+  border-radius: 6px;
+  display: flex; align-items: center; justify-content: center;
+  position: relative;
+}
+.logo-mark::after {
+  content: '';
+  width: 12px; height: 12px;
+  background: var(--accent);
+  clip-path: polygon(0 100%, 50% 0, 100% 100%);
+}
+.logo-text { font-size: 13px; font-weight: 600; letter-spacing: 0.12em; text-transform: uppercase; color: var(--text); }
+.logo-sub  { font-family: var(--mono); font-size: 10px; color: var(--muted); letter-spacing: 0.08em; }
+.header-spacer { flex: 1; }
+.status-pill {
+  display: flex; align-items: center; gap: 6px;
+  font-family: var(--mono); font-size: 11px; color: var(--pass);
+  padding: 4px 10px; border-radius: 20px;
+  border: 1px solid var(--pass);
+  background: var(--pass-dim);
+}
+.status-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--pass); animation: pulse 2s ease-in-out infinite; }
+@keyframes pulse { 0%,100%{opacity:1;transform:scale(1)} 50%{opacity:.5;transform:scale(0.7)} }
+
+/* ── Layout ── */
+.layout {
+  display: grid;
+  grid-template-columns: 380px 1fr;
+  grid-template-rows: auto 1fr;
+  gap: 0;
+  min-height: calc(100vh - 56px);
+  position: relative; z-index: 1;
+}
+
+/* ── Left panel (upload + stats) ── */
+.left-panel {
+  border-right: 1px solid var(--border);
+  display: flex; flex-direction: column;
+  background: var(--bg1);
+}
+
+/* Stats bar */
+.stats-bar {
+  display: grid; grid-template-columns: 1fr 1fr 1fr;
+  border-bottom: 1px solid var(--border);
+}
+.stat-cell {
+  padding: 14px 16px;
+  border-right: 1px solid var(--border);
+  cursor: default;
+  transition: background 0.2s;
+}
+.stat-cell:last-child { border-right: none; }
+.stat-cell:hover { background: var(--bg2); }
+.stat-label { font-family: var(--mono); font-size: 9px; text-transform: uppercase; letter-spacing: 0.14em; color: var(--dim); margin-bottom: 4px; }
+.stat-value { font-size: 22px; font-weight: 700; }
+.stat-value.total  { color: var(--text); }
+.stat-value.pass   { color: var(--pass); }
+.stat-value.defect { color: var(--defect); }
+.stat-sub { font-family: var(--mono); font-size: 10px; color: var(--muted); margin-top: 2px; }
+
+/* Upload zone */
+.upload-section { padding: 20px; border-bottom: 1px solid var(--border); }
+.section-header { font-family: var(--mono); font-size: 10px; letter-spacing: 0.14em; text-transform: uppercase; color: var(--dim); margin-bottom: 14px; display: flex; align-items: center; gap: 8px; }
+.section-header::after { content: ''; flex: 1; height: 1px; background: var(--border); }
+
+.drop-zone {
+  border: 1.5px dashed var(--border2);
+  border-radius: 10px;
+  padding: 32px 20px;
+  text-align: center;
+  cursor: pointer;
+  transition: border-color 0.2s, background 0.2s;
+  position: relative;
+  background: var(--bg2);
+}
+.drop-zone:hover, .drop-zone.drag-over {
+  border-color: var(--accent);
+  background: var(--accent-dim);
+}
+.drop-zone input[type="file"] { position: absolute; inset: 0; opacity: 0; cursor: pointer; }
+.drop-icon { font-size: 28px; margin-bottom: 10px; display: block; color: var(--dim); }
+.drop-title { font-size: 13px; font-weight: 600; color: var(--text); margin-bottom: 4px; }
+.drop-sub   { font-family: var(--mono); font-size: 11px; color: var(--muted); }
+
+.upload-btn {
+  width: 100%; margin-top: 14px;
+  padding: 12px;
+  background: var(--accent);
+  color: #fff;
+  border: none; border-radius: 8px;
+  font-family: var(--sans); font-size: 13px; font-weight: 600;
+  letter-spacing: 0.05em; cursor: pointer;
+  transition: opacity 0.2s, transform 0.1s;
+}
+.upload-btn:hover { opacity: 0.9; }
+.upload-btn:active { transform: scale(0.98); }
+.upload-btn:disabled { opacity: 0.4; cursor: not-allowed; transform: none; }
+
+/* Preview strip */
+.preview-strip { padding: 14px 20px 0; display: none; }
+.preview-img { width: 100%; height: 140px; object-fit: cover; border-radius: 8px; border: 1px solid var(--border2); }
+.preview-name { font-family: var(--mono); font-size: 10px; color: var(--muted); margin-top: 6px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+/* Progress bar */
+.progress-wrap { padding: 14px 20px 0; display: none; }
+.progress-bar  { height: 3px; background: var(--border); border-radius: 2px; overflow: hidden; }
+.progress-fill { height: 100%; width: 0%; background: linear-gradient(90deg, var(--accent), #a855f7); border-radius: 2px; transition: width 0.3s ease; animation: shimmer 1.5s ease-in-out infinite; }
+@keyframes shimmer { 0%,100%{opacity:1} 50%{opacity:0.6} }
+.progress-label { font-family: var(--mono); font-size: 10px; color: var(--muted); margin-top: 6px; }
+
+/* Inspection log */
+.log-section { flex: 1; overflow: hidden; display: flex; flex-direction: column; }
+.log-header { padding: 14px 20px; border-bottom: 1px solid var(--border); display: flex; align-items: center; justify-content: space-between; }
+.log-title { font-family: var(--mono); font-size: 10px; letter-spacing: 0.14em; text-transform: uppercase; color: var(--dim); }
+.log-clear { font-family: var(--mono); font-size: 10px; color: var(--dim); background: none; border: none; cursor: pointer; padding: 2px 6px; border-radius: 4px; transition: color 0.2s, background 0.2s; }
+.log-clear:hover { color: var(--defect); background: var(--defect-dim); }
+.log-list { overflow-y: auto; flex: 1; }
+.log-empty { padding: 32px 20px; text-align: center; font-family: var(--mono); font-size: 11px; color: var(--dim); }
+
+.log-item {
+  display: flex; align-items: center; gap: 10px;
+  padding: 10px 20px;
+  border-bottom: 1px solid var(--border);
+  cursor: pointer; transition: background 0.15s;
+  animation: slideIn 0.2s ease;
+}
+@keyframes slideIn { from{opacity:0;transform:translateX(-8px)} to{opacity:1;transform:none} }
+.log-item:hover { background: var(--bg2); }
+.log-thumb { width: 36px; height: 36px; border-radius: 5px; object-fit: cover; border: 1px solid var(--border2); flex-shrink: 0; }
+.log-info { flex: 1; min-width: 0; }
+.log-label { font-size: 12px; font-weight: 600; }
+.log-label.PASS   { color: var(--pass); }
+.log-label.DEFECT { color: var(--defect); }
+.log-meta { font-family: var(--mono); font-size: 10px; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; margin-top: 2px; }
+.log-badge { font-family: var(--mono); font-size: 10px; padding: 2px 6px; border-radius: 4px; flex-shrink: 0; }
+.log-badge.PASS   { background: var(--pass-dim);   color: var(--pass);   border: 1px solid var(--pass); }
+.log-badge.DEFECT { background: var(--defect-dim); color: var(--defect); border: 1px solid var(--defect); }
+
+/* ── Right panel (results) ── */
+.right-panel { display: flex; flex-direction: column; background: var(--bg); }
+
+/* Empty state */
+.empty-state {
+  flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center;
+  gap: 16px; padding: 40px;
+}
+.empty-grid {
+  display: grid; grid-template-columns: repeat(5, 40px); grid-template-rows: repeat(4, 40px);
+  gap: 4px; opacity: 0.25;
+}
+.empty-cell { border-radius: 4px; background: var(--border); }
+.empty-cell:nth-child(3n)  { background: var(--accent); opacity: 0.6; }
+.empty-cell:nth-child(7n)  { background: var(--pass);   opacity: 0.5; }
+.empty-cell:nth-child(11n) { background: var(--defect); opacity: 0.4; }
+.empty-title { font-size: 15px; font-weight: 600; color: var(--muted); }
+.empty-sub   { font-family: var(--mono); font-size: 11px; color: var(--dim); text-align: center; max-width: 280px; line-height: 1.6; }
+
+/* Result card */
+.result-panel { display: none; flex-direction: column; flex: 1; }
+
+/* Verdict banner */
+.verdict-banner {
+  padding: 20px 28px;
+  border-bottom: 1px solid var(--border);
+  display: flex; align-items: center; gap: 20px;
+}
+.verdict-icon { width: 48px; height: 48px; border-radius: 10px; display: flex; align-items: center; justify-content: center; flex-shrink: 0; font-size: 22px; }
+.verdict-icon.PASS   { background: var(--pass-dim);   border: 1.5px solid var(--pass); }
+.verdict-icon.DEFECT { background: var(--defect-dim); border: 1.5px solid var(--defect); }
+.verdict-text { flex: 1; }
+.verdict-label { font-size: 24px; font-weight: 700; line-height: 1; }
+.verdict-label.PASS   { color: var(--pass); }
+.verdict-label.DEFECT { color: var(--defect); }
+.verdict-file { font-family: var(--mono); font-size: 11px; color: var(--muted); margin-top: 4px; }
+.verdict-time { font-family: var(--mono); font-size: 11px; color: var(--dim); }
+
+/* Confidence gauge */
+.gauge-row { padding: 20px 28px; border-bottom: 1px solid var(--border); }
+.gauge-label-row { display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 8px; }
+.gauge-title { font-family: var(--mono); font-size: 10px; letter-spacing: 0.12em; text-transform: uppercase; color: var(--dim); }
+.gauge-pct   { font-size: 18px; font-weight: 700; }
+.gauge-track { height: 6px; background: var(--border); border-radius: 3px; overflow: hidden; }
+.gauge-fill  { height: 100%; border-radius: 3px; transition: width 0.6s cubic-bezier(0.16, 1, 0.3, 1); }
+.gauge-fill.PASS   { background: var(--pass); }
+.gauge-fill.DEFECT { background: var(--defect); }
+
+/* Image comparison */
+.images-grid {
+  display: grid; grid-template-columns: 1fr 1fr;
+  gap: 1px; background: var(--border);
+  border-bottom: 1px solid var(--border);
+}
+.img-pane { background: var(--bg1); padding: 16px 20px; }
+.img-pane-label { font-family: var(--mono); font-size: 10px; letter-spacing: 0.1em; text-transform: uppercase; color: var(--dim); margin-bottom: 10px; }
+.img-pane img { width: 100%; aspect-ratio: 1; object-fit: cover; border-radius: 8px; border: 1px solid var(--border); display: block; }
+.img-placeholder { width: 100%; aspect-ratio: 1; border-radius: 8px; border: 1px dashed var(--border2); display: flex; align-items: center; justify-content: center; color: var(--dim); font-family: var(--mono); font-size: 11px; }
+
+/* Metrics grid */
+.metrics-section { padding: 20px 28px; border-bottom: 1px solid var(--border); }
+.metrics-row { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; }
+.metric-card { background: var(--bg2); border: 1px solid var(--border); border-radius: 8px; padding: 12px 14px; }
+.metric-label { font-family: var(--mono); font-size: 9px; letter-spacing: 0.12em; text-transform: uppercase; color: var(--dim); margin-bottom: 6px; }
+.metric-value { font-family: var(--mono); font-size: 16px; font-weight: 500; color: var(--text); }
+.metric-unit  { font-size: 10px; color: var(--muted); margin-left: 2px; }
+
+/* Session metrics */
+.session-section { padding: 20px 28px; }
+.session-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 12px; }
+.session-bar-item { background: var(--bg2); border: 1px solid var(--border); border-radius: 8px; padding: 12px 14px; }
+.sbar-header { display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 8px; }
+.sbar-title { font-family: var(--mono); font-size: 9px; letter-spacing: 0.12em; text-transform: uppercase; color: var(--dim); }
+.sbar-val { font-family: var(--mono); font-size: 13px; font-weight: 500; }
+.sbar-val.pass   { color: var(--pass); }
+.sbar-val.defect { color: var(--defect); }
+.sbar-track { height: 4px; background: var(--border); border-radius: 2px; overflow: hidden; }
+.sbar-fill  { height: 100%; border-radius: 2px; transition: width 0.5s ease; }
+.sbar-fill.pass   { background: var(--pass); }
+.sbar-fill.defect { background: var(--defect); }
+
+/* Scrollbar */
+::-webkit-scrollbar { width: 4px; }
+::-webkit-scrollbar-track { background: var(--bg1); }
+::-webkit-scrollbar-thumb { background: var(--border2); border-radius: 2px; }
+::-webkit-scrollbar-thumb:hover { background: var(--dim); }
+
+/* Toast notification */
+.toast {
+  position: fixed; bottom: 24px; right: 24px; z-index: 999;
+  padding: 10px 16px; border-radius: 8px;
+  font-family: var(--mono); font-size: 12px;
+  background: var(--bg3); border: 1px solid var(--border2);
+  transform: translateY(80px); opacity: 0;
+  transition: transform 0.3s ease, opacity 0.3s ease;
+}
+.toast.show { transform: translateY(0); opacity: 1; }
+.toast.error-toast { border-color: var(--defect); color: var(--defect); }
+</style>
+</head>
+<body>
+
+<!-- Header -->
+<header class="header">
+  <div class="logo-mark"></div>
+  <div>
+    <div class="logo-text">VisionSpec QC</div>
+    <div class="logo-sub">PCB Defect Detection System</div>
+  </div>
+  <div class="header-spacer"></div>
+  <div class="status-pill" id="status-pill">
+    <span class="status-dot"></span>
+    <span id="status-text">System Ready</span>
+  </div>
+</header>
+
+<!-- Main layout -->
+<div class="layout">
+
+  <!-- ── Left Panel ── -->
+  <aside class="left-panel">
+
+    <!-- Session stats -->
+    <div class="stats-bar">
+      <div class="stat-cell">
+        <div class="stat-label">Inspected</div>
+        <div class="stat-value total" id="stat-total">0</div>
+        <div class="stat-sub">this session</div>
+      </div>
+      <div class="stat-cell">
+        <div class="stat-label">Pass</div>
+        <div class="stat-value pass" id="stat-pass">0</div>
+        <div class="stat-sub" id="stat-pass-pct">—</div>
+      </div>
+      <div class="stat-cell">
+        <div class="stat-label">Defect</div>
+        <div class="stat-value defect" id="stat-defect">0</div>
+        <div class="stat-sub" id="stat-defect-pct">—</div>
+      </div>
+    </div>
+
+    <!-- Upload -->
+    <div class="upload-section">
+      <div class="section-header">Upload PCB Image</div>
+      <div class="drop-zone" id="drop-zone">
+        <input type="file" id="file-input" accept="image/*">
+        <span class="drop-icon">⬡</span>
+        <div class="drop-title">Drop image here</div>
+        <div class="drop-sub">PNG, JPG, BMP · max 16 MB</div>
+      </div>
+      <button class="upload-btn" id="upload-btn" disabled onclick="runInspection()">
+        Inspect Board
+      </button>
+      <div class="preview-strip" id="preview-strip">
+        <img id="preview-img" src="" alt="preview">
+        <div class="preview-name" id="preview-name"></div>
+      </div>
+      <div class="progress-wrap" id="progress-wrap">
+        <div class="progress-bar"><div class="progress-fill" id="progress-fill"></div></div>
+        <div class="progress-label" id="progress-label">Running inference...</div>
+      </div>
+    </div>
+
+    <!-- Inspection log -->
+    <div class="log-section">
+      <div class="log-header">
+        <span class="log-title">Inspection Log</span>
+        <button class="log-clear" onclick="clearSession()">Reset session</button>
+      </div>
+      <div class="log-list" id="log-list">
+        <div class="log-empty" id="log-empty">No inspections yet</div>
+      </div>
+    </div>
+
+  </aside>
+
+  <!-- ── Right Panel ── -->
+  <main class="right-panel" id="right-panel">
+
+    <!-- Empty state -->
+    <div class="empty-state" id="empty-state">
+      <div class="empty-grid">
+        <div class="empty-cell" style="grid-column:1/3"></div>
+        <div class="empty-cell"></div>
+        <div class="empty-cell"></div>
+        <div class="empty-cell"></div>
+        <div class="empty-cell"></div>
+        <div class="empty-cell" style="grid-column:2/4"></div>
+        <div class="empty-cell"></div>
+        <div class="empty-cell"></div>
+        <div class="empty-cell"></div>
+        <div class="empty-cell"></div>
+        <div class="empty-cell"></div>
+        <div class="empty-cell" style="grid-column:4/6"></div>
+        <div class="empty-cell"></div>
+        <div class="empty-cell"></div>
+        <div class="empty-cell" style="grid-column:1/3"></div>
+        <div class="empty-cell"></div>
+        <div class="empty-cell"></div>
+      </div>
+      <div class="empty-title">No board inspected yet</div>
+      <div class="empty-sub">Upload a PCB image on the left to begin automated quality inspection</div>
+    </div>
+
+    <!-- Result panel -->
+    <div class="result-panel" id="result-panel">
+
+      <!-- Verdict -->
+      <div class="verdict-banner" id="verdict-banner">
+        <div class="verdict-icon" id="verdict-icon">?</div>
+        <div class="verdict-text">
+          <div class="verdict-label" id="verdict-label">—</div>
+          <div class="verdict-file" id="verdict-file">—</div>
+        </div>
+        <div class="verdict-time" id="verdict-time">—</div>
+      </div>
+
+      <!-- Confidence gauge -->
+      <div class="gauge-row">
+        <div class="gauge-label-row">
+          <span class="gauge-title" id="gauge-title">Defect Confidence</span>
+          <span class="gauge-pct" id="gauge-pct">—</span>
+        </div>
+        <div class="gauge-track">
+          <div class="gauge-fill" id="gauge-fill" style="width:0%"></div>
+        </div>
+      </div>
+
+      <!-- Images side by side -->
+      <div class="images-grid">
+        <div class="img-pane">
+          <div class="img-pane-label">Original Image</div>
+          <img id="result-original" src="" alt="Original PCB">
+        </div>
+        <div class="img-pane">
+          <div class="img-pane-label">Grad-CAM Heatmap</div>
+          <div class="img-placeholder" id="gradcam-placeholder">Heatmap N/A</div>
+          <img id="result-gradcam" src="" alt="Grad-CAM" style="display:none">
+        </div>
+      </div>
+
+      <!-- Metrics -->
+      <div class="metrics-section">
+        <div class="section-header">Inference Metrics</div>
+        <div class="metrics-row">
+          <div class="metric-card">
+            <div class="metric-label">Infer time</div>
+            <div class="metric-value" id="m-infer">—<span class="metric-unit">ms</span></div>
+          </div>
+          <div class="metric-card">
+            <div class="metric-label">Total time</div>
+            <div class="metric-value" id="m-total">—<span class="metric-unit">ms</span></div>
+          </div>
+          <div class="metric-card">
+            <div class="metric-label">Pass score</div>
+            <div class="metric-value" id="m-score">—</div>
+          </div>
+          <div class="metric-card">
+            <div class="metric-label">Threshold</div>
+            <div class="metric-value" id="m-thresh">—</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Session bars -->
+      <div class="session-section">
+        <div class="section-header">Session Overview</div>
+        <div class="session-grid">
+          <div class="session-bar-item">
+            <div class="sbar-header">
+              <span class="sbar-title">Pass rate</span>
+              <span class="sbar-val pass" id="sb-pass-pct">—</span>
+            </div>
+            <div class="sbar-track"><div class="sbar-fill pass" id="sb-pass-bar" style="width:0%"></div></div>
+          </div>
+          <div class="session-bar-item">
+            <div class="sbar-header">
+              <span class="sbar-title">Defect rate</span>
+              <span class="sbar-val defect" id="sb-defect-pct">—</span>
+            </div>
+            <div class="sbar-track"><div class="sbar-fill defect" id="sb-defect-bar" style="width:0%"></div></div>
+          </div>
+        </div>
+      </div>
+
+    </div><!-- /result-panel -->
+  </main>
+
+</div><!-- /layout -->
+
+<div class="toast" id="toast"></div>
+
+<script>
+// ── State ─────────────────────────────────────────────────────────────────────
+let selectedFile = null;
+let THRESHOLD    = 0.50;
+
+// Fetch the server threshold on load
+fetch('/api/stats').then(r => r.json()).catch(() => ({})).then(d => {});
+
+// ── File selection ─────────────────────────────────────────────────────────────
+const dropZone  = document.getElementById('drop-zone');
+const fileInput = document.getElementById('file-input');
+
+fileInput.addEventListener('change', e => { if (e.target.files[0]) selectFile(e.target.files[0]); });
+
+dropZone.addEventListener('dragover',  e => { e.preventDefault(); dropZone.classList.add('drag-over'); });
+dropZone.addEventListener('dragleave', ()=> dropZone.classList.remove('drag-over'));
+dropZone.addEventListener('drop', e => {
+  e.preventDefault(); dropZone.classList.remove('drag-over');
+  if (e.dataTransfer.files[0]) selectFile(e.dataTransfer.files[0]);
+});
+
+function selectFile(file) {
+  selectedFile = file;
+  document.getElementById('upload-btn').disabled = false;
+  const previewStrip = document.getElementById('preview-strip');
+  previewStrip.style.display = 'block';
+  document.getElementById('preview-name').textContent = file.name;
+  const reader = new FileReader();
+  reader.onload = e => { document.getElementById('preview-img').src = e.target.result; };
+  reader.readAsDataURL(file);
+}
+
+// ── Inspection ─────────────────────────────────────────────────────────────────
+async function runInspection() {
+  if (!selectedFile) return;
+  const btn = document.getElementById('upload-btn');
+  btn.disabled = true;
+
+  // Show progress
+  setProgress(true, 'Uploading image...');
+  setProgress(true, 'Uploading image...', 20);
+
+  const formData = new FormData();
+  formData.append('image', selectedFile);
+
+  try {
+    setProgress(true, 'Running TFLite inference...', 45);
+    const res  = await fetch('/api/inspect', { method: 'POST', body: formData });
+    setProgress(true, 'Computing Grad-CAM heatmap...', 75);
+
+    if (!res.ok) {
+      const err = await res.json();
+      throw new Error(err.error || 'Server error');
+    }
+
+    setProgress(true, 'Rendering results...', 95);
+    const data = await res.json();
+    setProgress(false);
+    renderResult(data);
+    addLogItem(data);
+    updateStats(data.stats);
+    showToast(data.label === 'PASS' ? '✓ Board passed inspection' : '⚠ Defect detected!', data.label !== 'PASS');
+
+  } catch(err) {
+    setProgress(false);
+    showToast('Error: ' + err.message, true);
+  } finally {
+    btn.disabled = false;
+  }
+}
+
+function setProgress(show, label='', pct=0) {
+  const wrap  = document.getElementById('progress-wrap');
+  const fill  = document.getElementById('progress-fill');
+  const lbl   = document.getElementById('progress-label');
+  wrap.style.display = show ? 'block' : 'none';
+  fill.style.width   = pct + '%';
+  lbl.textContent    = label;
+}
+
+// ── Render result ──────────────────────────────────────────────────────────────
+function renderResult(data) {
+  document.getElementById('empty-state').style.display  = 'none';
+  document.getElementById('result-panel').style.display = 'flex';
+
+  const label = data.label;
+  const isPASS = label === 'PASS';
+
+  // Verdict
+  const banner = document.getElementById('verdict-banner');
+  banner.style.borderLeft = `4px solid ${isPASS ? 'var(--pass)' : 'var(--defect)'}`;
+  document.getElementById('verdict-icon').className  = 'verdict-icon ' + label;
+  document.getElementById('verdict-icon').textContent = isPASS ? '✓' : '✕';
+  document.getElementById('verdict-label').className = 'verdict-label ' + label;
+  document.getElementById('verdict-label').textContent = label;
+  document.getElementById('verdict-file').textContent = data.filename;
+  document.getElementById('verdict-time').textContent = new Date(data.timestamp).toLocaleTimeString();
+
+  // Confidence gauge
+  const confPct  = Math.round(data.confidence * 100);
+  document.getElementById('gauge-title').textContent = isPASS ? 'Pass Confidence' : 'Defect Confidence';
+  document.getElementById('gauge-pct').textContent   = confPct + '%';
+  document.getElementById('gauge-pct').style.color   = isPASS ? 'var(--pass)' : 'var(--defect)';
+  const fill = document.getElementById('gauge-fill');
+  fill.className = 'gauge-fill ' + label;
+  setTimeout(() => { fill.style.width = confPct + '%'; }, 50);
+
+  // Original image
+  document.getElementById('result-original').src = 'data:image/jpeg;base64,' + data.thumb_b64;
+
+  // Grad-CAM
+  if (data.gradcam_b64) {
+    document.getElementById('result-gradcam').src     = 'data:image/jpeg;base64,' + data.gradcam_b64;
+    document.getElementById('result-gradcam').style.display   = 'block';
+    document.getElementById('gradcam-placeholder').style.display = 'none';
+  } else {
+    document.getElementById('result-gradcam').style.display      = 'none';
+    document.getElementById('gradcam-placeholder').style.display = 'flex';
+  }
+
+  // Metrics
+  document.getElementById('m-infer').innerHTML  = data.infer_ms + '<span class="metric-unit">ms</span>';
+  document.getElementById('m-total').innerHTML  = data.total_ms + '<span class="metric-unit">ms</span>';
+  document.getElementById('m-score').textContent = data.score.toFixed(3);
+  document.getElementById('m-thresh').textContent = '{{ "%.3f"|format(thresh) }}';
+}
+
+// ── Log ────────────────────────────────────────────────────────────────────────
+function addLogItem(data) {
+  const empty = document.getElementById('log-empty');
+  if (empty) empty.style.display = 'none';
+
+  const list = document.getElementById('log-list');
+  const item = document.createElement('div');
+  item.className = 'log-item';
+  item.innerHTML = `
+    <img class="log-thumb" src="data:image/jpeg;base64,${data.thumb_b64}" alt="">
+    <div class="log-info">
+      <div class="log-label ${data.label}">${data.label}</div>
+      <div class="log-meta">${data.filename} · ${new Date(data.timestamp).toLocaleTimeString()}</div>
+    </div>
+    <span class="log-badge ${data.label}">${(data.confidence * 100).toFixed(0)}%</span>`;
+  item.onclick = () => renderResult(data);
+  list.insertBefore(item, list.firstChild);
+}
+
+// ── Stats ──────────────────────────────────────────────────────────────────────
+function updateStats(stats) {
+  document.getElementById('stat-total').textContent = stats.total;
+  document.getElementById('stat-pass').textContent  = stats.pass;
+  document.getElementById('stat-defect').textContent= stats.defect;
+  document.getElementById('stat-pass-pct').textContent   = stats.pass_rate  + '%';
+  document.getElementById('stat-defect-pct').textContent = stats.defect_rate + '%';
+
+  document.getElementById('sb-pass-pct').textContent   = stats.pass_rate   + '%';
+  document.getElementById('sb-defect-pct').textContent = stats.defect_rate + '%';
+  document.getElementById('sb-pass-bar').style.width   = stats.pass_rate   + '%';
+  document.getElementById('sb-defect-bar').style.width = stats.defect_rate + '%';
+}
+
+// ── Clear session ──────────────────────────────────────────────────────────────
+async function clearSession() {
+  await fetch('/api/reset', { method: 'POST' });
+  document.getElementById('log-list').innerHTML = '<div class="log-empty" id="log-empty">No inspections yet</div>';
+  document.getElementById('empty-state').style.display  = 'flex';
+  document.getElementById('result-panel').style.display = 'none';
+  updateStats({ total:0, pass:0, defect:0, pass_rate:0, defect_rate:0 });
+  showToast('Session reset');
+}
+
+// ── Toast ──────────────────────────────────────────────────────────────────────
+let toastTimer = null;
+function showToast(msg, isError=false) {
+  const t = document.getElementById('toast');
+  t.textContent = msg;
+  t.className   = 'toast' + (isError ? ' error-toast' : '');
+  requestAnimationFrame(() => t.classList.add('show'));
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => t.classList.remove('show'), 3200);
+}
+</script>
+</body>
+</html>
