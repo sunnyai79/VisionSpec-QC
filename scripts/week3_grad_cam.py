@@ -289,7 +289,7 @@ def overlay_gradcam(original_img_array, heatmap, alpha=ALPHA, colormap=cv2.COLOR
 
 # ─── Step 5: Batch Visualisation & Verification ───────────────────────────────
 def visualize_gradcam_grid(model, n_pass=4, n_defect=4,
-                           save_path="week3_gradcam_grid.png"):
+                           save_path="results/week3_gradcam_grid.png"):
     """
     Visualise Grad-CAM for a mix of pass/defect images.
     Verification check: heatmaps must highlight component/pad regions,
@@ -363,7 +363,7 @@ def visualize_gradcam_grid(model, n_pass=4, n_defect=4,
 
 
 # ─── Step 6: Deep-Dive — Single Image with Multiple Colormaps ─────────────────
-def visualize_single_gradcam(model, img_path, save_path="week3_gradcam_detail.png"):
+def visualize_single_gradcam(model, img_path, save_path="results/week3_gradcam_detail.png"):
     """
     Full deep-dive for a single defect image:
     Show 4 colormaps to pick the clearest for the production dashboard.
