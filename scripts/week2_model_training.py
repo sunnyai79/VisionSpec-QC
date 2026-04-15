@@ -180,7 +180,7 @@ def get_callbacks(phase_name):
 
 
 # ─── Step 4: Plot Learning Curves ────────────────────────────────────────────
-def plot_learning_curves(h1, h2=None, save_path="week2_learning_curves.png"):
+def plot_learning_curves(h1, h2=None, save_path="results/week2_learning_curves.png"):
     """
     Plot accuracy + loss curves for both training phases.
     Healthy curves: val_loss decreasing and converging to train_loss.
@@ -232,7 +232,7 @@ def plot_learning_curves(h1, h2=None, save_path="week2_learning_curves.png"):
 
 
 # ─── Step 5: Evaluation & Confusion Matrix ───────────────────────────────────
-def evaluate_model(model, val_gen, threshold=None, save_path="week2_confusion_matrix.png"):
+def evaluate_model(model, val_gen, threshold=None, save_path="results/week2_confusion_matrix.png"):
     """
     Full evaluation with correct defect-class metrics and auto-threshold selection.
     Auto-threshold: scan 0.25→0.80, find threshold where recall>=0.90 AND F1 is highest.
