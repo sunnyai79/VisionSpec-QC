@@ -797,7 +797,7 @@ def benchmark_inference(tflite_path=TFLITE_PATH, n_runs=200):
     axes[1].set_title("Per-Frame Latency"); axes[1].legend()
 
     plt.tight_layout()
-    plt.savefig("week4_benchmark.png", dpi=150, bbox_inches="tight")
+    plt.savefig("results/week4_benchmark.png", dpi=150, bbox_inches="tight")
     plt.show()
     print("  Saved: week4_benchmark.png")
 
