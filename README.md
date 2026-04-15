@@ -34,29 +34,52 @@ justify its 7× parameter count and its failure to meet the >10 FPS production r
 ## Project Structure
 
 ```
-VisionSpec_QC/
-├── requirements.txt
-├── week1_data_preparation.py   ← Data augmentation pipeline
-├── week2_model_training.py     ← MobileNetV2 transfer learning
-├── week3_grad_cam.py           ← Grad-CAM interpretability
-├── week4_live_inference.py     ← TFLite optimisation + live demo
-├── dataset/
-│   ├── train/
-│   │   ├── pass/    (300 images)
-│   │   └── defect/  (300 images)
-│   └── val/
-│       ├── pass/    (75 images)
-│       └── defect/  (75 images)
-└── models/
-    ├── visionspec_qc_final.h5
-    ├── visionspec_qc_savedmodel/
-    └── visionspec_qc_quantized.tflite
-
-VisionSpec_WebApp/
-├── app.py                   ← Flask backend
-├── requirements_webapp.txt  ← Web dependencies
-└── templates/
-    └── index.html           ← Main web interface
+VisionSpec/
+│
+├── README.md                      → Project guide
+├── requirements.txt               → Dependencies list
+├── app.py                         → Flask app
+│
+├── results/                       → Output visuals
+│   ├── week1_augmented_batch.png      → Augmented images
+│   ├── week1_class_samples.png        → Sample images
+│   ├── week2_confusion_matrix.png     → Confusion matrix
+│   ├── week2_learning_curves.png      → Training curves
+│   ├── week3_gradcam_detail.png       → GradCAM detail
+│   └── week3_gradcam_grid.png         → GradCAM grid
+│
+├── scripts/                       → Processing scripts
+│   ├── week1_data_preparation.py      → Data preprocessing
+│   ├── week2_model_training.py        → Model training
+│   ├── week3_grad_cam.py              → GradCAM generation
+│   └── week4_live_inference.py        → Live inference
+│
+├── templates/                     → Web UI
+│   └── index.html                     → Frontend page
+│
+├── test/                         → Test images
+│
+├── models/                        → Trained models
+│   ├── best_threshold.txt             → Threshold value
+│   ├── visionspec_phase1_best.keras   → Phase1 model without fine-tune
+│   ├── visionspec_phase2_best.keras   → Phase2 model with fine-tune
+│   ├── visionspec_qc_final.h5         → Final model
+│   ├── visionspec_qc_final.keras      → Keras model
+│   ├── visionspec_qc_quantized.tflite → Mobile model
+│   └── visionspec_qc_savedmodel/ → TF model
+│       ├── fingerprint.pb             → Metadata
+│       ├── saved_model.pb             → Model graph
+│       └── variables/                 → Model weights
+│           ├── variables.data...      → Weights data
+│           └── variables.index        → Weights index
+│
+└── dataset/                       → Image data
+    ├── val/                       → Validation data
+    │   ├── defect                 → Defect images
+    │   └── pass                   → Normal images
+    └── train/                     → Training data
+        ├── defect                 → Defect images
+        └── pass                   → Normal images
 ```
 
 ---
@@ -66,9 +89,6 @@ VisionSpec_WebApp/
 ```bash
 # Core pipeline
 pip install -r requirements.txt
-
-# Web application
-pip install -r requirements_webapp.txt
 ```
 
 ---
@@ -224,12 +244,11 @@ Multi-threaded interpreter (4 CPU threads)
 ## Web Application
 
 A factory-floor quality control dashboard for real-time PCB defect detection.
-Upload any PCB image and get an instant PASS/DEFECT verdict with Grad-CAM heatmap.
+Upload any PCB image, folder and by using camera and get an instant PASS/DEFECT verdict with Grad-CAM heatmap.
 
 ### Run the web app
 
 ```bash
-cd VisionSpec_WebApp
 python app.py
 ```
 
